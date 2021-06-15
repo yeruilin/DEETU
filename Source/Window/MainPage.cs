@@ -17,6 +17,7 @@ using System.Drawing.Drawing2D;
 using DEETU.Testing;
 using System.Diagnostics;
 using System.Reflection.Emit;
+using System.Threading.Tasks;
 
 namespace DEETU.Source.Window
 {
@@ -155,7 +156,7 @@ namespace DEETU.Source.Window
             logging = sender.Equals(交叉选择).ToString();
 #endif
 
-            if (mMapOpStyle != GeoMapOpStyleEnum.Select)
+            if (mIsEditing)
             {
                 UncheckToolStrip(mMapOpStyle);
                 this.Cursor = new Cursor("./icons/EditSelect.ico");
@@ -1262,7 +1263,7 @@ namespace DEETU.Source.Window
             mMovingGeometries.Clear();
         }
 
-        private void OnIdentify_MouseUp(MouseEventArgs e)
+        private async void OnIdentify_MouseUp(MouseEventArgs e)
         {
             if (mIsInIdentify == false)
                 return;
@@ -1277,11 +1278,31 @@ namespace DEETU.Source.Window
             GeoRectangle sBox = GetMapRectByTwoPoints(mStartMouseLocation, e.Location);
             double tolerance = geoMap.ToMapDistance(mSelectingTolerance);
             GeoMapLayer sLayer = GetSelectableLayer();
+            if(sLayer == null)
+            {
+                return;
+            }
 
             GeoFeatures sFeatures = sLayer.SearchByBox(sBox, tolerance, 全包含选择.Checked);
             sLayer.SelectedFeatures.Clear();
             sLayer.SelectedFeatures.AddRange(sFeatures.ToArray());
+
+            DrawIdentifyFlash(sFeatures);
             ShowIdentifyMessage(sFeatures, sLayer);
+        }
+
+        private void DrawIdentifyFlash(GeoFeatures sFeatures)
+        {
+            int sSelFeatureCount = sFeatures.Count;
+            if (sSelFeatureCount > 0)
+            {
+                GeoGeometry[] sGeometryies = new GeoGeometry[sSelFeatureCount];
+                for (int i = 0; i < sSelFeatureCount; i++)
+                {
+                    sGeometryies[i] = sFeatures.GetItem(i).Geometry;
+                }
+                geoMap.FlashShapes(sGeometryies, 1, 800);
+            }
         }
 
         /// <summary>
@@ -1477,16 +1498,24 @@ namespace DEETU.Source.Window
 
         private void LoadRecentUsedFiles()
         {
-            using (StreamReader sr = new StreamReader("./recent_used_files.txt"))
+            try
             {
-                while (sr.EndOfStream == false)
+                using (StreamReader sr = new StreamReader("./recent_used_files.txt"))
                 {
-                    TreeNode sNode = new TreeNode();
-                    sNode.Text = sr.ReadLine();
-                    sNode.Tag = sr.ReadLine();
-                    FileTreeView.Nodes[0].Nodes.Add(sNode);
+                    while (sr.EndOfStream == false)
+                    {
+                        TreeNode sNode = new TreeNode();
+                        sNode.Text = sr.ReadLine();
+                        sNode.Tag = sr.ReadLine();
+                        FileTreeView.Nodes[0].Nodes.Add(sNode);
+                    }
                 }
             }
+            catch (Exception e)
+            {
+
+            }
+
         }
         //初始化符号
         private void InitializeSymbols()
@@ -2802,13 +2831,55 @@ namespace DEETU.Source.Window
             }
         }
 
-        private void 剪切要素ToolStripButton_Click(object sender, EventArgs e)
+        private void FileTreeView_NodeMouseDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
+        {
+            if (e.Node.Level == 0) return;//双击父节点返回
+            string path = e.Node.Tag.ToString();
+#if DEBUG
+            logging = path;
+#endif
+            if (File.Exists(path))
+            {
+                LoadLayerFile(path);
+            }
+        }
+
+        private void 撤销_Click(object sender, EventArgs e)
+        {
+            Undo();
+        }
+
+        private void 重做_Click(object sender, EventArgs e)
+        {
+            Redo();
+        }
+
+        private void 选择模式更改_Click(object sender, EventArgs e)
+        {
+            if (sender == 交叉选择 || sender == 交叉选择菜单)
+            {
+                全包含选择菜单.Checked = false;
+                全包含选择.Checked = false;
+                交叉选择.Checked = true;
+                交叉选择菜单.Checked = true;
+                return;
+            }
+            else if (sender == 全包含选择 || sender == 全包含选择菜单)
+            {
+                全包含选择菜单.Checked = true;
+                全包含选择.Checked = true;
+                交叉选择.Checked = false;
+                交叉选择菜单.Checked = false;
+                return;
+            }
+        }
+
+        private void 剪切要素_Click(object sender, EventArgs e)
         {
             Cut();
         }
 
      
-
         private void MainPage_KeyUp(object sender, KeyEventArgs e)
         {
 #if DEBUG
